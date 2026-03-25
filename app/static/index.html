@@ -334,12 +334,16 @@
 
 <!-- ══ TAB 1 ══ -->
 <div class="tab-content active" id="tab1">
+  <div style="display:flex; gap:8px; justify-content:flex-end;">
+    <button class="btn btn-neutral" id="micBtn"     onclick="toggleCapture('mic')"    >🎤 マイク翻訳</button>
+    <button class="btn btn-primary" id="speakerBtn" onclick="toggleCapture('speaker')">🔊 スピーカー翻訳</button>
+  </div>
   <div class="subtitle-stage">
     <div class="subtitle-ja empty" id="latestJa">翻訳待機中...</div>
     <div class="subtitle-en" id="latestEn"></div>
   </div>
   <div class="history-section">
-    <h2>履歴（最新10件）</h2>
+    <h2>履歴（最新100件）</h2>
     <div class="history-list" id="historyList"></div>
   </div>
 </div>
@@ -391,7 +395,7 @@
 // ─── WebSocket ───────────────────────────────────────────────────────────────
 let ws = null;
 let wsReconnectTimer = null;
-const MAX_HISTORY = 10;
+const MAX_HISTORY = 100;
 const history = [];
 
 function connectWS() {
@@ -699,6 +703,113 @@ function renderMarkdown(text) {
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/\n/g, "<br>");
+}
+
+// ─── Audio Capture ────────────────────────────────────────────────────────────
+let captureWs = null;
+let audioContext = null;
+let mediaStream = null;
+let processor = null;
+let activeMode = null;  // 'mic' | 'speaker'
+
+async function startCapture(mode) {
+  let stream;
+  try {
+    if (mode === "mic") {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } else {
+      // getDisplayMedia でシステム音声（スピーカー出力）をキャプチャ
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        audio: { echoCancellation: false, noiseSuppression: false },
+        video: true,  // ブラウザが要求するため必要、すぐに停止する
+      });
+      stream.getVideoTracks().forEach(t => t.stop());
+      if (stream.getAudioTracks().length === 0) {
+        alert("音声が選択されませんでした。\n\n画面共有ダイアログで\n「音声を共有する」をオンにしてください。");
+        return;
+      }
+    }
+  } catch (err) {
+    if (mode === "mic") alert("マイクへのアクセスが許可されていません。\nブラウザの設定を確認してください。");
+    return;
+  }
+
+  mediaStream = stream;
+  activeMode = mode;
+  audioContext = new AudioContext();
+  const source = audioContext.createMediaStreamSource(mediaStream);
+  const inputSampleRate = audioContext.sampleRate;
+  const targetSampleRate = 16000;
+  const ratio = inputSampleRate / targetSampleRate;
+
+  processor = audioContext.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = (e) => {
+    const input = e.inputBuffer.getChannelData(0);
+    const outputLen = Math.floor(input.length / ratio);
+    const pcm = new Int16Array(outputLen);
+    for (let i = 0; i < outputLen; i++) {
+      const idx = i * ratio;
+      const lo = Math.floor(idx);
+      const hi = Math.min(lo + 1, input.length - 1);
+      const sample = input[lo] * (1 - (idx - lo)) + input[hi] * (idx - lo);
+      pcm[i] = Math.max(-32768, Math.min(32767, Math.round(sample * 32768)));
+    }
+    if (captureWs && captureWs.readyState === WebSocket.OPEN) {
+      captureWs.send(pcm.buffer);
+    }
+  };
+  source.connect(processor);
+  processor.connect(audioContext.destination);
+
+  // ユーザーが画面共有を止めたら自動停止
+  mediaStream.getAudioTracks()[0].addEventListener("ended", stopCapture);
+
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  captureWs = new WebSocket(`${proto}//${location.host}/ws/capture?mode=realtime`);
+  captureWs.onopen  = () => updateCaptureBtns(true, mode);
+  captureWs.onclose = () => stopCapture();
+  captureWs.onerror = () => { alert("サーバーへの接続に失敗しました。"); stopCapture(); };
+}
+
+function stopCapture() {
+  if (processor)    { processor.disconnect(); processor = null; }
+  if (audioContext) { audioContext.close();   audioContext = null; }
+  if (mediaStream)  { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  if (captureWs)    { captureWs.close();      captureWs = null; }
+  updateCaptureBtns(false, activeMode);
+  activeMode = null;
+}
+
+function toggleCapture(mode) {
+  if (captureWs && captureWs.readyState === WebSocket.OPEN) {
+    stopCapture();
+  } else {
+    startCapture(mode);
+  }
+}
+
+function updateCaptureBtns(isCapturing, mode) {
+  const micBtn     = document.getElementById("micBtn");
+  const speakerBtn = document.getElementById("speakerBtn");
+
+  // 停止中は両ボタンを元に戻す
+  micBtn.textContent     = "🎤 マイク翻訳";
+  speakerBtn.textContent = "🔊 スピーカー翻訳";
+  micBtn.classList.replace("btn-danger", "btn-neutral");
+  speakerBtn.classList.replace("btn-danger", "btn-primary");
+  micBtn.disabled = speakerBtn.disabled = false;
+
+  if (isCapturing) {
+    if (mode === "mic") {
+      micBtn.textContent = "⏹ 停止";
+      micBtn.classList.replace("btn-neutral", "btn-danger");
+      speakerBtn.disabled = true;
+    } else {
+      speakerBtn.textContent = "⏹ 停止";
+      speakerBtn.classList.replace("btn-primary", "btn-danger");
+      micBtn.disabled = true;
+    }
+  }
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
