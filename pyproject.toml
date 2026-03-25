@@ -1,0 +1,16 @@
+[project]
+name = "teams-translator"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "websockets",
+    "anthropic",
+    "faster-whisper",
+    "numpy",
+    "aiosqlite",
+    "python-multipart",
+    "python-dotenv",
+    "pydantic-settings",
+]

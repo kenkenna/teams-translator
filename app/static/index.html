@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teams 会議翻訳</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+      background: #0f0f13;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1a1a24;
+      border-bottom: 1px solid #2d2d40;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #444;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: #4caf50; box-shadow: 0 0 6px #4caf5088; }
+    .status-dot.capturing { background: #f44336; box-shadow: 0 0 8px #f4433688; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+    .status-label {
+      font-size: 0.78rem;
+      color: #888;
+      margin-left: -6px;
+    }
+
+    /* ── Tabs ── */
+    .tab-bar {
+      display: flex;
+      background: #1a1a24;
+      border-bottom: 2px solid #2d2d40;
+      padding: 0 24px;
+    }
+    .tab-btn {
+      padding: 12px 20px;
+      border: none;
+      background: none;
+      color: #888;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-family: inherit;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .tab-btn:hover { color: #ccc; }
+    .tab-btn.active { color: #7c9fff; border-bottom-color: #7c9fff; font-weight: 600; }
+
+    /* ── Tab content ── */
+    .tab-content { display: none; flex: 1; flex-direction: column; }
+    .tab-content.active { display: flex; }
+
+    /* ══════════════════════════════════════════
+       TAB 1 — Real-time Translation
+    ══════════════════════════════════════════ */
+    #tab1 {
+      background: #0d0d11;
+      padding: 24px;
+      gap: 20px;
+      overflow: hidden;
+    }
+
+    .subtitle-stage {
+      background: #111118;
+      border: 1px solid #2a2a38;
+      border-radius: 12px;
+      padding: 32px 36px;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 14px;
+    }
+    .subtitle-ja {
+      font-size: 1.85rem;
+      font-weight: 500;
+      color: #ffffff;
+      line-height: 1.5;
+      min-height: 2.8rem;
+      transition: opacity 0.3s;
+    }
+    .subtitle-ja.empty { color: #333; font-size: 1.1rem; }
+    .subtitle-en {
+      font-size: 1rem;
+      color: #5a5a6e;
+      line-height: 1.5;
+      min-height: 1.5rem;
+    }
+
+    .history-section {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .history-section h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #555;
+    }
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-right: 4px;
+    }
+    .history-item {
+      background: #16161e;
+      border: 1px solid #222230;
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+    .history-item .ts {
+      font-size: 0.7rem;
+      color: #444;
+      margin-bottom: 4px;
+    }
+    .history-item .hi-ja {
+      font-size: 0.95rem;
+      color: #d0d0e8;
+      margin-bottom: 3px;
+    }
+    .history-item .hi-en {
+      font-size: 0.8rem;
+      color: #4a4a5e;
+    }
+
+    /* scrollbar */
+    .history-list::-webkit-scrollbar { width: 4px; }
+    .history-list::-webkit-scrollbar-track { background: transparent; }
+    .history-list::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+    /* ══════════════════════════════════════════
+       TAB 2 — Meetings / Recording
+    ══════════════════════════════════════════ */
+    #tab2 {
+      padding: 24px;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    .t2-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .t2-toolbar h2 { font-size: 1rem; color: #ccc; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: #7c9fff; color: #0d0d20; }
+    .btn-primary:hover:not(:disabled) { background: #91aaff; }
+    .btn-danger  { background: #c0392b; color: #fff; }
+    .btn-danger:hover:not(:disabled)  { background: #e74c3c; }
+    .btn-neutral { background: #2a2a38; color: #ccc; }
+    .btn-neutral:hover:not(:disabled) { background: #333345; }
+
+    .meetings-table-wrap {
+      overflow-x: auto;
+      border: 1px solid #2a2a38;
+      border-radius: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    thead th {
+      background: #1a1a26;
+      color: #888;
+      font-weight: 500;
+      text-align: left;
+      padding: 10px 14px;
+      white-space: nowrap;
+    }
+    tbody tr {
+      border-top: 1px solid #22222e;
+      transition: background 0.15s;
+    }
+    tbody tr:hover { background: #14141c; }
+    tbody td { padding: 10px 14px; vertical-align: middle; }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .badge-recording  { background: #f4433622; color: #f44336; border: 1px solid #f4433644; }
+    .badge-processing { background: #ff980022; color: #ff9800; border: 1px solid #ff980044; }
+    .badge-done       { background: #4caf5022; color: #4caf50; border: 1px solid #4caf5044; }
+    .badge-error      { background: #9e9e9e22; color: #9e9e9e; border: 1px solid #9e9e9e44; }
+
+    /* Meeting detail panel */
+    .meeting-detail {
+      background: #111118;
+      border: 1px solid #2a2a38;
+      border-radius: 10px;
+      padding: 20px 24px;
+    }
+    .meeting-detail h3 {
+      font-size: 1rem;
+      color: #ccc;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .summary-box {
+      background: #0f0f16;
+      border: 1px solid #222230;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      white-space: pre-wrap;
+      line-height: 1.7;
+      font-size: 0.88rem;
+      color: #c8c8de;
+    }
+    .summary-box h2 { font-size: 1rem; color: #fff; margin-bottom: 8px; }
+    .summary-box h3 { font-size: 0.88rem; color: #aaa; margin: 14px 0 6px; }
+
+    .transcript-table-wrap {
+      overflow-x: auto;
+      border: 1px solid #222230;
+      border-radius: 8px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .transcript-table-wrap table thead th { background: #141420; }
+    .ts-col { width: 80px; color: #555; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #444;
+      border-top-color: #7c9fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .no-data { text-align: center; color: #444; padding: 32px; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #1a1a26;
+      border: 1px solid #2d2d40;
+      border-radius: 12px;
+      padding: 28px 32px;
+      min-width: 340px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .modal h2 { font-size: 1rem; color: #fff; }
+    .modal input[type="text"] {
+      width: 100%;
+      background: #0f0f16;
+      border: 1px solid #333348;
+      border-radius: 6px;
+      padding: 9px 12px;
+      color: #e0e0e0;
+      font-family: inherit;
+      font-size: 0.9rem;
+    }
+    .modal input[type="text"]:focus { outline: none; border-color: #7c9fff; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="status-dot" id="wsDot"></div>
+  <span class="status-label" id="wsLabel">未接続</span>
+  <h1>Teams 会議翻訳</h1>
+</header>
+
+<div class="tab-bar">
+  <button class="tab-btn active" id="tabBtn1" onclick="switchTab(1)">リアルタイム翻訳</button>
+  <button class="tab-btn"        id="tabBtn2" onclick="switchTab(2)">会議録音・振り返り</button>
+</div>
+
+<!-- ══ TAB 1 ══ -->
+<div class="tab-content active" id="tab1">
+  <div class="subtitle-stage">
+    <div class="subtitle-ja empty" id="latestJa">翻訳待機中...</div>
+    <div class="subtitle-en" id="latestEn"></div>
+  </div>
+  <div class="history-section">
+    <h2>履歴（最新10件）</h2>
+    <div class="history-list" id="historyList"></div>
+  </div>
+</div>
+
+<!-- ══ TAB 2 ══ -->
+<div class="tab-content" id="tab2">
+  <div class="t2-toolbar">
+    <h2>録音済み会議一覧</h2>
+    <button class="btn btn-primary" onclick="openNewMeetingModal()">＋ 新規会議</button>
+  </div>
+
+  <div class="meetings-table-wrap">
+    <table id="meetingsTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>会議名</th>
+          <th>日時</th>
+          <th>ステータス</th>
+          <th>録音時間</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="meetingsTbody">
+        <tr><td colspan="6" class="no-data">読み込み中...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="meeting-detail" id="meetingDetail" style="display:none">
+    <h3 id="detailTitle">会議詳細</h3>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<!-- New Meeting Modal -->
+<div class="modal-overlay" id="newMeetingModal">
+  <div class="modal">
+    <h2>新規会議を作成</h2>
+    <input type="text" id="newMeetingName" placeholder="会議名を入力" />
+    <div class="modal-actions">
+      <button class="btn btn-neutral" onclick="closeNewMeetingModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="createMeeting()">作成</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── WebSocket ───────────────────────────────────────────────────────────────
+let ws = null;
+let wsReconnectTimer = null;
+const MAX_HISTORY = 10;
+const history = [];
+
+function connectWS() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${proto}//${location.host}/ws/display`;
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    setDot("connected");
+    if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+  };
+
+  ws.onclose = () => {
+    setDot("disconnected");
+    wsReconnectTimer = setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+
+  ws.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      handleWSMessage(msg);
+    } catch (_) {}
+  };
+}
+
+function handleWSMessage(msg) {
+  if (msg.type === "status") {
+    if (msg.is_capturing) setDot("capturing");
+    else setDot("connected");
+  } else if (msg.type === "translation") {
+    showTranslation(msg);
+  }
+}
+
+function setDot(state) {
+  const dot = document.getElementById("wsDot");
+  const label = document.getElementById("wsLabel");
+  dot.className = "status-dot";
+  if (state === "connected")    { dot.classList.add("connected"); label.textContent = "接続済み"; }
+  if (state === "capturing")    { dot.classList.add("capturing"); label.textContent = "キャプチャ中"; }
+  if (state === "disconnected") { label.textContent = "未接続 (再接続中...)"; }
+}
+
+// ─── Translation display ─────────────────────────────────────────────────────
+function showTranslation(msg) {
+  const jaEl = document.getElementById("latestJa");
+  const enEl = document.getElementById("latestEn");
+
+  jaEl.textContent = msg.translated;
+  jaEl.classList.remove("empty");
+  enEl.textContent = msg.original;
+
+  const ts = new Date(msg.timestamp).toLocaleTimeString("ja-JP");
+  history.unshift({ ja: msg.translated, en: msg.original, ts });
+  if (history.length > MAX_HISTORY) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = document.getElementById("historyList");
+  list.innerHTML = history.map(h => `
+    <div class="history-item">
+      <div class="ts">${h.ts}</div>
+      <div class="hi-ja">${escHtml(h.ja)}</div>
+      <div class="hi-en">${escHtml(h.en)}</div>
+    </div>
+  `).join("");
+}
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(n) {
+  document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
+  document.getElementById(`tab${n}`).classList.add("active");
+  document.getElementById(`tabBtn${n}`).classList.add("active");
+  if (n === 2) loadMeetings();
+}
+
+// ─── Meetings ─────────────────────────────────────────────────────────────────
+let pollingTimers = {};
+
+async function loadMeetings() {
+  try {
+    const res = await fetch("/api/meetings");
+    const meetings = await res.json();
+    renderMeetings(meetings);
+
+    // Start polling for any processing meetings
+    meetings.forEach(m => {
+      if (m.status === "processing") startPolling(m.id);
+    });
+  } catch (e) {
+    document.getElementById("meetingsTbody").innerHTML =
+      `<tr><td colspan="6" class="no-data">読み込みエラー</td></tr>`;
+  }
+}
+
+function renderMeetings(meetings) {
+  const tbody = document.getElementById("meetingsTbody");
+  if (!meetings.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="no-data">会議がありません</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = meetings.map(m => {
+    const date = m.started_at ? new Date(m.started_at).toLocaleString("ja-JP") : "—";
+    const dur  = m.duration_seconds != null ? formatDuration(m.duration_seconds) : "—";
+    const badge = statusBadge(m.status);
+    const actions = renderActions(m);
+    return `
+      <tr>
+        <td>${m.id}</td>
+        <td>${escHtml(m.name)}</td>
+        <td style="white-space:nowrap">${date}</td>
+        <td>${badge}</td>
+        <td>${dur}</td>
+        <td>${actions}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderActions(m) {
+  const parts = [];
+  if (m.status === "done") {
+    parts.push(`<button class="btn btn-neutral" onclick="viewMeeting(${m.id})">詳細</button>`);
+    parts.push(`<button class="btn btn-primary" onclick="processMeeting(${m.id})">再処理</button>`);
+  } else if (m.status === "error") {
+    parts.push(`<button class="btn btn-primary" onclick="processMeeting(${m.id})">処理開始</button>`);
+  } else if (m.status === "processing") {
+    parts.push(`<span class="spinner"></span> 処理中...`);
+  }
+  parts.push(`<button class="btn btn-danger" onclick="deleteMeeting(${m.id})">削除</button>`);
+  return `<div style="display:flex;gap:6px;align-items:center">${parts.join("")}</div>`;
+}
+
+function statusBadge(status) {
+  const map = {
+    recording:  ["badge-recording",  "録音中"],
+    processing: ["badge-processing", "処理中"],
+    done:       ["badge-done",       "完了"],
+    error:      ["badge-error",      "エラー"],
+  };
+  const [cls, label] = map[status] || ["badge-error", status];
+  return `<span class="status-badge ${cls}">${label}</span>`;
+}
+
+async function processMeeting(id) {
+  try {
+    const res = await fetch(`/api/meetings/${id}/process`, { method: "POST" });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.detail || "処理開始に失敗しました");
+      return;
+    }
+    await loadMeetings();
+    startPolling(id);
+  } catch (e) {
+    alert("エラーが発生しました");
+  }
+}
+
+function startPolling(id) {
+  if (pollingTimers[id]) return;
+  pollingTimers[id] = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/meetings/${id}/status`);
+      const data = await res.json();
+      if (data.status !== "processing") {
+        clearInterval(pollingTimers[id]);
+        delete pollingTimers[id];
+        await loadMeetings();
+      }
+    } catch (_) {}
+  }, 3000);
+}
+
+async function viewMeeting(id) {
+  const detail = document.getElementById("meetingDetail");
+  const content = document.getElementById("detailContent");
+  const title = document.getElementById("detailTitle");
+
+  detail.style.display = "block";
+  content.innerHTML = `<div style="text-align:center;padding:24px"><span class="spinner"></span></div>`;
+
+  try {
+    const res = await fetch(`/api/meetings/${id}`);
+    const m = await res.json();
+    title.textContent = `${m.name} — 詳細`;
+
+    let html = "";
+
+    if (m.summary) {
+      html += `<div class="summary-box">${renderMarkdown(m.summary.content)}</div>`;
+    } else {
+      html += `<p style="color:#555;margin-bottom:16px">サマリーはまだありません。</p>`;
+    }
+
+    if (m.transcripts && m.transcripts.length) {
+      html += `
+        <div class="transcript-table-wrap">
+          <table>
+            <thead><tr><th class="ts-col">時刻</th><th>英語（原文）</th><th>日本語（翻訳）</th></tr></thead>
+            <tbody>
+              ${m.transcripts.map(t => `
+                <tr>
+                  <td class="ts-col">${formatDuration(t.timestamp_seconds)}</td>
+                  <td>${escHtml(t.original_text)}</td>
+                  <td>${escHtml(t.translated_text)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } else {
+      html += `<p style="color:#555">文字起こしデータがありません。</p>`;
+    }
+
+    content.innerHTML = html;
+    detail.scrollIntoView({ behavior: "smooth" });
+  } catch (e) {
+    content.innerHTML = `<p style="color:#f44336">データの取得に失敗しました。</p>`;
+  }
+}
+
+async function deleteMeeting(id) {
+  if (!confirm("この会議を削除しますか？（録音データも削除されます）")) return;
+  try {
+    await fetch(`/api/meetings/${id}`, { method: "DELETE" });
+    const detail = document.getElementById("meetingDetail");
+    detail.style.display = "none";
+    await loadMeetings();
+  } catch (e) {
+    alert("削除に失敗しました");
+  }
+}
+
+// ─── New Meeting Modal ────────────────────────────────────────────────────────
+function openNewMeetingModal() {
+  document.getElementById("newMeetingName").value = "";
+  document.getElementById("newMeetingModal").classList.add("open");
+  setTimeout(() => document.getElementById("newMeetingName").focus(), 50);
+}
+function closeNewMeetingModal() {
+  document.getElementById("newMeetingModal").classList.remove("open");
+}
+async function createMeeting() {
+  const name = document.getElementById("newMeetingName").value.trim();
+  if (!name) { alert("会議名を入力してください"); return; }
+  try {
+    const res = await fetch("/api/meetings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.detail || "作成に失敗しました");
+      return;
+    }
+    const data = await res.json();
+    closeNewMeetingModal();
+    await loadMeetings();
+    alert(`会議を作成しました。\nID: ${data.meeting_id}\n\nWindows側で次のコマンドを実行してください:\npython capture.py --mode record --meeting-id ${data.meeting_id}`);
+  } catch (e) {
+    alert("エラーが発生しました");
+  }
+}
+
+document.getElementById("newMeetingName").addEventListener("keydown", e => {
+  if (e.key === "Enter") createMeeting();
+  if (e.key === "Escape") closeNewMeetingModal();
+});
+document.getElementById("newMeetingModal").addEventListener("click", e => {
+  if (e.target === e.currentTarget) closeNewMeetingModal();
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatDuration(sec) {
+  if (sec == null) return "—";
+  const s = Math.floor(sec);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}:${String(m % 60).padStart(2,"0")}:${String(s % 60).padStart(2,"0")}`;
+  return `${m}:${String(s % 60).padStart(2,"0")}`;
+}
+
+function renderMarkdown(text) {
+  // Minimal markdown: ## headings, ### headings, line breaks
+  return escHtml(text)
+    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+    .replace(/\n/g, "<br>");
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+connectWS();
+</script>
+</body>
+</html>
